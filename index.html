@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Electrochemistry Selective Discharge</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --panel-color: #ffffff;
+            --accent-color: #2c3e50;
+            --primary-blue: #3498db;
+            --copper-color: #b87333;
+            --graphite-color: #333333;
+            --text-color: #2c3e50;
+            --success-green: #27ae60;
+            --error-red: #e74c3c;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden; /* Prevent body scroll */
+            touch-action: none;
+        }
+
+        #app-container {
+            width: 98vw;
+            height: 98vh;
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel-color);
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 2px solid #d1d9e6;
+            overflow: hidden;
+        }
+
+        #header {
+            padding: 0.75rem 1.5rem;
+            background: var(--accent-color);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0; /* Don't squash the header */
+        }
+
+        #header h1 { font-size: 1.2rem; }
+
+        #controls {
+            display: flex;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            background: #eef2f7;
+            border-bottom: 1px solid #d1d9e6;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            flex-shrink: 0; /* Don't squash controls */
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        label { font-size: 0.65rem; font-weight: bold; color: #555; text-transform: uppercase; }
+
+        select, button {
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        #power-btn {
+            background: var(--success-green);
+            color: white;
+            font-weight: bold;
+            border: none;
+            padding: 8px 15px;
+            min-width: 140px;
+        }
+
+        #lab-bench {
+            flex-grow: 1; /* Take up all remaining space */
+            position: relative;
+            background: radial-gradient(circle at center, #ffffff 0%, #f0f4f8 100%);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #main-svg { 
+            width: 100%; 
+            height: 100%; 
+            max-height: 100%;
+        }
+
+        /* Responsive adjustments for iPad Portrait or smaller laptops */
+        @media (max-width: 768px) {
+            #header h1 { font-size: 1rem; }
+            #controls { gap: 0.5rem; padding: 0.5rem; }
+            .control-group select, .control-group button { font-size: 0.75rem; padding: 6px; }
+        }
+
+        /* Modal Styles - Centered */
+        .modal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(44, 62, 80, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            max-width: 500px;
+            width: 85%;
+            text-align: center;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 1rem 0;
+        }
+
+        .option-btn {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+        }
+
+        .option-btn.selected { border-color: var(--primary-blue); background: #d1e9ff; }
+
+        #feedback-toast {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: 30px;
+            color: white;
+            font-weight: bold;
+            display: none;
+            z-index: 2000;
+            font-size: 0.9rem;
+        }
+
+        .ion-label { font-size: 11px; font-weight: bold; pointer-events: none; }
+        .electron-label { font-size: 8px; font-weight: bold; fill: black; }
+        .equation-text { font-family: 'Times New Roman', serif; font-style: italic; font-size: 15px; font-weight: bold; fill: #2c3e50; text-anchor: middle; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="header">
+        <h1>Electrochemistry Lab: Selective Discharge</h1>
+        <div id="sim-status" style="font-weight: bold; font-size: 0.8rem;">STATUS: STANDBY</div>
+    </div>
+
+    <div id="controls">
+        <div class="control-group">
+            <label>1. Electrolyte</label>
+            <select id="electrolyte-select">
+                <option value="none">-- Select Solution --</option>
+                <optgroup label="Molten">
+                    <option value="m_nacl">Molten NaCl</option>
+                    <option value="m_pbbr2">Molten Lead(II) Bromide</option>
+                </optgroup>
+                <optgroup label="Aqueous">
+                    <option value="aq_nacl">Aqueous NaCl (Dilute)</option>
+                    <option value="aq_conc_nacl">Aqueous NaCl (Concentrated)</option>
+                    <option value="aq_cuso4">Aqueous Copper(II) Sulfate</option>
+                    <option value="aq_hcl">Dilute Hydrochloric Acid</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>2. Electrodes</label>
+            <select id="electrode-type">
+                <option value="graphite">Inert Graphite</option>
+                <option value="copper">Reactive Copper</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <button id="power-btn">CHECK & START</button>
+        </div>
+
+        <div class="control-group">
+            <button id="replay-btn" style="background: var(--primary-blue); color: white; display: none;">REPLAY</button>
+        </div>
+
+        <div class="control-group">
+            <button id="reset-btn" style="background: #95a5a6; color: white; border: none;">RESET</button>
+        </div>
+    </div>
+
+    <div id="lab-bench">
+        <div id="feedback-toast"></div>
+        
+        <!-- Added preserveAspectRatio for best fit on iPad/Laptops -->
+        <svg id="main-svg" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid meet">
+            <!-- Electrolyte Volume Fill -->
+            <path id="liquid" d="M120 220 L680 220 L680 460 Q680 480 660 480 L140 480 Q120 480 120 460 Z" fill="#ffffff" />
+            <line id="liquid-level-line" x1="120" y1="220" x2="680" y2="220" stroke="#000000" stroke-width="2" />
+
+            <!-- Circuitry -->
+            <g id="circuit">
+                <g id="battery-symbol">
+                    <line x1="410" y1="40" x2="410" y2="80" stroke="#333" stroke-width="2" />
+                    <line x1="390" y1="50" x2="390" y2="70" stroke="#333" stroke-width="6" />
+                    <text x="415" y="45" font-size="16" font-weight="bold">+</text>
+                    <text x="375" y="45" font-size="16" font-weight="bold">-</text>
+                </g>
+                <path id="path-wire-l" d="M390 60 L180 60 L180 150" fill="none" stroke="#333" stroke-width="3" />
+                <path id="path-wire-r" d="M410 60 L620 60 L620 150" fill="none" stroke="#333" stroke-width="3" />
+            </g>
+
+            <!-- Electrodes -->
+            <rect id="cathode" x="165" y="140" width="30" height="220" fill="#333" rx="2" />
+            <rect id="cathode-solid" x="160" y="140" width="40" height="220" fill="#b87333" rx="2" style="display:none; opacity: 0; pointer-events: none;" />
+            <rect id="anode" x="605" y="140" width="30" height="220" fill="#333" rx="2" />
+            
+            <text x="145" y="420" font-size="11" font-weight="bold">CATHODE (-)</text>
+            <text x="595" y="420" font-size="11" font-weight="bold">ANODE (+)</text>
+
+            <text id="cathode-eqn" x="180" y="465" class="equation-text"></text>
+            <text id="anode-eqn" x="620" y="465" class="equation-text"></text>
+
+            <g id="ions-layer"></g>
+            <g id="bubbles-layer"></g>
+            <g id="globules-layer"></g>
+            
+            <path d="M120 180 L120 460 Q120 480 140 480 L660 480 Q680 480 680 460 L680 180" fill="none" stroke="#bdc3c7" stroke-width="5" />
+            <g id="electrons-layer"></g>
+        </svg>
+    </div>
+
+    <div id="prediction-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title">Check Your Understanding</h2>
+            <p id="modal-step" style="font-weight: bold; color: var(--primary-blue); font-size: 0.9rem; margin-top: 5px;">Step 1 of 2</p>
+            <p id="modal-question" style="margin: 10px 0;">Which substance will be produced at the Negative Electrode?</p>
+            <div class="options-grid" id="modal-options"></div>
+            <button id="submit-prediction" disabled style="width:100%; background: var(--accent-color); color:white; border:none; padding:12px; font-weight:bold;">CONFIRM PREDICTION</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const DATA = {
+        m_nacl: { 
+            type: 'molten', c_prod: 'Sodium metal', a_prod: 'Chlorine gas', c_ion: 'Na+', a_ion: 'Cl-',
+            ions: [['Na+','#f39c12'],['Cl-','#27ae60']], bg: '#ffffff',
+            c_eqn: 'Na⁺ + e⁻ → Na', a_eqn: '2Cl⁻ → Cl₂ + 2e⁻' 
+        },
+        m_pbbr2: { 
+            type: 'molten', c_prod: 'Lead metal', a_prod: 'Bromine gas', c_ion: 'Pb2+', a_ion: 'Br-',
+            ions: [['Pb2+','#7f8c8d'],['Br-','#d35400']], bg: '#ffffff',
+            c_eqn: 'Pb²⁺ + 2e⁻ → Pb', a_eqn: '2Br⁻ → Br₂ + 2e⁻' 
+        },
+        aq_nacl: { 
+            type: 'aqueous', c_prod: 'Hydrogen gas', a_prod: 'Oxygen gas', c_ion: 'H+', a_ion: 'OH-',
+            ions: [['Na+','#f39c12'],['Cl-','#27ae60'],['H+','#ffffff'],['OH-','#ffffff']], bg: '#ffffff',
+            c_eqn: '2H⁺ + 2e⁻ → H₂', a_eqn: '4OH⁻ → O₂ + 2H₂O + 4e⁻' 
+        },
+        aq_conc_nacl: { 
+            type: 'aqueous_conc', c_prod: 'Hydrogen gas', a_prod: 'Chlorine gas', c_ion: 'H+', a_ion: 'Cl-',
+            ions: [['Na+','#f39c12'],['Cl-','#27ae60'],['H+','#ffffff'],['OH-','#ffffff']], bg: '#ffffff',
+            c_eqn: '2H⁺ + 2e⁻ → H₂', a_eqn: '2Cl⁻ → Cl₂ + 2e⁻' 
+        },
+        aq_cuso4: { 
+            type: 'aqueous', c_prod: 'Copper metal', a_prod: 'Oxygen gas', c_ion: 'Cu2+', a_ion: 'OH-',
+            ions: [['Cu2+','#2980b9'],['SO4 2-','#8e44ad'],['H+','#ffffff'],['OH-','#ffffff']], bg: '#2980b9',
+            c_eqn: 'Cu²⁺ + 2e⁻ → Cu', a_eqn: '4OH⁻ → O₂ + 2H₂O + 4e⁻' 
+        },
+        aq_hcl: { 
+            type: 'aqueous', c_prod: 'Hydrogen gas', a_prod: 'Oxygen gas', c_ion: 'H+', a_ion: 'OH-',
+            ions: [['H+','#ffffff'],['Cl-','#27ae60'],['OH-','#ffffff']], bg: '#ffffff',
+            c_eqn: '2H⁺ + 2e⁻ → H₂', a_eqn: '4OH⁻ → O₂ + 2H₂O + 4e⁻' 
+        }
+    };
+
+    const state = {
+        active: false,
+        electrolyte: 'none',
+        electrodes: 'graphite',
+        phase: 'cathode', 
+        selection: null,
+        particles: [],
+        electrons: [],
+        electronsReachedCathode: 0,
+        liquidTop: 220,
+        liquidBottom: 460,
+        blueIntensity: 0.5
+    };
+
+    const els = {
+        selElectrolyte: document.getElementById('electrolyte-select'),
+        selElectrode: document.getElementById('electrode-type'),
+        btnPower: document.getElementById('power-btn'),
+        btnReplay: document.getElementById('replay-btn'),
+        btnReset: document.getElementById('reset-btn'),
+        modal: document.getElementById('prediction-modal'),
+        modalOptions: document.getElementById('modal-options'),
+        btnSubmit: document.getElementById('submit-prediction'),
+        liquid: document.getElementById('liquid'),
+        ionsLayer: document.getElementById('ions-layer'),
+        bubblesLayer: document.getElementById('bubbles-layer'),
+        globulesLayer: document.getElementById('globules-layer'),
+        electronsLayer: document.getElementById('electrons-layer'),
+        cathode: document.getElementById('cathode'),
+        anode: document.getElementById('anode'),
+        cathodeSolid: document.getElementById('cathode-solid'),
+        cathodeEqn: document.getElementById('cathode-eqn'),
+        anodeEqn: document.getElementById('anode-eqn'),
+        toast: document.getElementById('feedback-toast'),
+        status: document.getElementById('sim-status'),
+        pathL: document.getElementById('path-wire-l'),
+        pathR: document.getElementById('path-wire-r')
+    };
+
+    function init() {
+        els.selElectrolyte.onchange = setupLab;
+        els.selElectrode.onchange = setupLab;
+        els.btnPower.onclick = () => state.active ? stopSim() : startCheck();
+        els.btnReset.onclick = resetLab;
+        els.btnReplay.onclick = () => { setupLab(); startSim(); };
+        els.btnSubmit.onclick = validatePrediction;
+        setupLab();
+    }
+
+    function setupLab() {
+        state.electrolyte = els.selElectrolyte.value;
+        state.electrodes = els.selElectrode.value;
+        stopSim();
+        
+        els.btnReplay.style.display = 'none';
+        const isCopper = state.electrodes === 'copper';
+        els.cathode.setAttribute('fill', isCopper ? '#b87333' : '#333');
+        els.anode.setAttribute('fill', isCopper ? '#b87333' : '#333');
+        els.anode.setAttribute('width', '30');
+        els.anode.setAttribute('x', '605');
+        
+        els.cathodeEqn.textContent = '';
+        els.anodeEqn.textContent = '';
+        els.ionsLayer.innerHTML = '';
+        els.electronsLayer.innerHTML = '';
+        els.bubblesLayer.innerHTML = '';
+        els.globulesLayer.innerHTML = '';
+        state.particles = [];
+        state.electrons = [];
+        state.electronsReachedCathode = 0;
+        els.cathodeSolid.style.display = 'none';
+        els.cathodeSolid.style.opacity = '0';
+
+        if (state.electrolyte !== 'none') {
+            const config = DATA[state.electrolyte];
+            els.liquid.setAttribute('fill', config.bg);
+            state.blueIntensity = (state.electrolyte === 'aq_cuso4') ? 0.5 : 1;
+            els.liquid.setAttribute('fill-opacity', state.blueIntensity.toString());
+            spawnIons();
+        } else {
+            els.liquid.setAttribute('fill', '#ffffff');
+            els.liquid.setAttribute('fill-opacity', '1');
+        }
+    }
+
+    function spawnIons() {
+        const config = DATA[state.electrolyte];
+        config.ions.forEach(typeInfo => {
+            const ionSymbol = typeInfo[0];
+            let count = config.type.includes('aqueous') ? 25 : 20;
+            if (ionSymbol === 'H+' || ionSymbol === 'OH-') count = 30;
+            for (let i = 0; i < count; i++) createIon(typeInfo);
+        });
+    }
+
+    function createIon(typeInfo, fromAnode = false) {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        
+        const ionSymbol = typeInfo[0];
+        const isWater = (ionSymbol === 'H+' || ionSymbol === 'OH-');
+
+        let x = fromAnode ? 610 : 200 + Math.random() * 400;
+        let y = state.liquidTop + 20 + Math.random() * (state.liquidBottom - state.liquidTop - 40);
+        
+        c.setAttribute('r', '13');
+        c.setAttribute('fill', typeInfo[1]);
+        c.setAttribute('stroke', isWater ? '#333' : 'rgba(255,255,255,0.4)');
+        t.textContent = ionSymbol;
+        t.setAttribute('class', 'ion-label');
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('dy', '4');
+        t.setAttribute('fill', isWater ? '#000' : '#fff');
+        
+        g.appendChild(c); g.appendChild(t);
+        g.setAttribute('transform', `translate(${x},${y})`);
+        els.ionsLayer.appendChild(g);
+        
+        const isCation = typeInfo[0].includes('+');
+        state.particles.push({
+            el: g, x, y, type: typeInfo[0], isCation,
+            targetX: isCation ? (195 + Math.random() * 40) : (605 - Math.random() * 40),
+            targetY: state.liquidTop + 15 + Math.random() * (state.liquidBottom - state.liquidTop - 30),
+            reached: false, discharged: false, opacity: 1, speed: 0.7 + Math.random() * 0.5,
+            spawnTime: fromAnode ? Date.now() : 0
+        });
+    }
+
+    function startCheck() {
+        if (state.electrolyte === 'none') return showToast("Select electrolyte first", "var(--error-red)");
+        state.phase = 'cathode';
+        showPredictionModal();
+    }
+
+    function showPredictionModal() {
+        els.modal.style.display = 'flex';
+        els.modalOptions.innerHTML = '';
+        els.btnSubmit.disabled = true;
+        const isCathode = state.phase === 'cathode';
+        document.getElementById('modal-step').textContent = isCathode ? "Step 1 of 2: Cathode" : "Step 2 of 2: Anode";
+        document.getElementById('modal-question').textContent = isCathode ? "What forms at the Cathode (-)?" : "What forms at the Anode (+)?";
+
+        let opts = isCathode 
+            ? ['Hydrogen gas', 'Sodium metal', 'Copper metal', 'Lead metal']
+            : ['Oxygen gas', 'Chlorine gas', 'Bromine gas', 'Copper(II) ions dissolved'];
+
+        opts.forEach(o => {
+            const b = document.createElement('button');
+            b.className = 'option-btn';
+            b.textContent = o;
+            b.onclick = () => {
+                document.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('selected'));
+                b.classList.add('selected');
+                state.selection = o;
+                els.btnSubmit.disabled = false;
+            };
+            els.modalOptions.appendChild(b);
+        });
+    }
+
+    function validatePrediction() {
+        const config = DATA[state.electrolyte];
+        let correct = state.phase === 'cathode' ? config.c_prod : config.a_prod;
+        if (state.phase === 'anode' && state.electrodes === 'copper') correct = 'Copper(II) ions dissolved';
+
+        if (state.selection === correct) {
+            if (state.phase === 'cathode') { state.phase = 'anode'; showPredictionModal(); }
+            else { els.modal.style.display = 'none'; startSim(); }
+        } else showToast("Try again!", "var(--error-red)");
+    }
+
+    let raf;
+    function startSim() {
+        state.active = true;
+        els.btnPower.textContent = "STOP";
+        els.btnPower.style.background = "var(--error-red)";
+        els.status.textContent = "STATUS: ACTIVE";
+        els.status.style.color = "#2ecc71";
+        const config = DATA[state.electrolyte];
+        els.cathodeEqn.textContent = config.c_eqn;
+        els.anodeEqn.textContent = (state.electrodes === 'copper') ? 'Cu → Cu²⁺ + 2e⁻' : config.a_eqn;
+        runLoop();
+    }
+
+    function stopSim() {
+        state.active = false;
+        cancelAnimationFrame(raf);
+        els.btnPower.textContent = "CHECK & START";
+        els.btnPower.style.background = "var(--success-green)";
+        if (els.status.textContent === "STATUS: ACTIVE") els.status.textContent = "STATUS: STANDBY";
+        else els.btnReplay.style.display = 'inline-block';
+    }
+
+    function runLoop() {
+        if (!state.active) return;
+        const config = DATA[state.electrolyte];
+        const isReactive = state.electrodes === 'copper';
+        let cationCount = 0;
+
+        state.particles.forEach(p => {
+            if (p.discharged) return;
+            if (p.spawnTime && Date.now() - p.spawnTime < 800) return;
+
+            const dx = p.targetX - p.x; const dy = p.targetY - p.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > 2) { p.x += (dx/dist)*p.speed; p.y += (dy/dist)*p.speed; } 
+            else p.reached = true;
+            p.el.setAttribute('transform', `translate(${p.x},${p.y})`);
+
+            const isCationTarget = (p.isCation && p.type === config.c_ion);
+            const isAnionTarget = (!p.isCation && p.type === config.a_ion && !isReactive);
+            if (isCationTarget) cationCount++;
+
+            if (p.reached && (isCationTarget || isAnionTarget)) {
+                if (p.isCation && state.electronsReachedCathode <= 0) return;
+                if (Math.random() < 0.05) {
+                    p.discharged = true;
+                    if (p.isCation) {
+                        state.electronsReachedCathode--;
+                        if (isReactive && p.type === 'Cu2+') dissolveAnode();
+                        else if (!isReactive && p.type === 'Cu2+') updateBlue(-0.02);
+                    }
+                    triggerEffect(p.isCation ? 'c' : 'a', p.x, p.y, p.type);
+                }
+            }
+        });
+
+        if (!isReactive && cationCount === 0) { els.status.textContent = "STATUS: COMPLETE"; stopSim(); return; }
+        if (state.electrons.length < 12 && Math.random() < 0.15) spawnElectron();
+        updateElectrons();
+        raf = requestAnimationFrame(runLoop);
+    }
+
+    function triggerEffect(side, x, y, type) {
+        const prod = side === 'c' ? DATA[state.electrolyte].c_prod : (state.electrodes === 'copper' ? 'ions' : DATA[state.electrolyte].a_prod);
+        if (prod.includes('gas')) spawnBubble(x, y);
+        if (prod.includes('metal') && DATA[state.electrolyte].type === 'molten') spawnGlobule(x, y);
+        if (type === 'Cu2+' && side === 'c') {
+            els.cathodeSolid.style.display = 'block';
+            let op = parseFloat(els.cathodeSolid.style.opacity) || 0;
+            if (op < 1) els.cathodeSolid.style.opacity = (op + 0.02).toString();
+        }
+        state.particles.filter(p => p.discharged).forEach(p => {
+            p.opacity -= 0.1; p.el.style.opacity = p.opacity;
+            if (p.opacity <= 0) p.el.style.display = 'none';
+        });
+    }
+
+    function dissolveAnode() {
+        let w = parseFloat(els.anode.getAttribute('width'));
+        if (w > 5) {
+            els.anode.setAttribute('width', (w - 0.5).toString());
+            els.anode.setAttribute('x', (605 + (30 - (w - 0.5))).toString());
+            createIon(['Cu2+', '#2980b9'], true);
+        }
+    }
+
+    function updateBlue(delta) {
+        if (state.electrolyte !== 'aq_cuso4') return;
+        state.blueIntensity = Math.max(0.05, Math.min(0.5, state.blueIntensity + delta));
+        els.liquid.setAttribute('fill-opacity', state.blueIntensity.toString());
+    }
+
+    function spawnElectron() {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute('r', '7'); c.setAttribute('fill', '#f1c40f');
+        g.appendChild(c); els.electronsLayer.appendChild(g);
+        state.electrons.push({ el: g, progress: 0, speed: 0.008, type: 'a' });
+    }
+
+    function updateElectrons() {
+        state.electrons.forEach((e, i) => {
+            e.progress += e.speed;
+            const path = e.type === 'a' ? els.pathR : els.pathL;
+            const len = path.getTotalLength();
+            const pt = path.getPointAtLength(e.type === 'a' ? len * (1-e.progress) : len * e.progress);
+            e.el.setAttribute('transform', `translate(${pt.x},${pt.y})`);
+            if (e.progress >= 1) {
+                if (e.type === 'a') { e.progress = 0; e.type = 'c'; }
+                else { state.electronsReachedCathode++; e.el.remove(); state.electrons.splice(i, 1); }
+            }
+        });
+    }
+
+    function spawnBubble(x, y) {
+        const b = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        b.setAttribute('r', 3); b.setAttribute('fill', 'rgba(255,255,255,0.5)');
+        b.setAttribute('cx', x); b.setAttribute('cy', y);
+        els.bubblesLayer.appendChild(b);
+        let curY = y;
+        const iv = setInterval(() => {
+            curY -= 2; b.setAttribute('cy', curY);
+            if (curY < state.liquidTop) { clearInterval(iv); b.remove(); }
+        }, 30);
+    }
+
+    function spawnGlobule(x, y) {
+        const b = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        b.setAttribute('r', 5); b.setAttribute('fill', '#7f8c8d');
+        b.setAttribute('cx', x); b.setAttribute('cy', y);
+        els.globulesLayer.appendChild(b);
+        let curY = y;
+        const iv = setInterval(() => {
+            if (curY < 450) { curY += 1.5; b.setAttribute('cy', curY); } else clearInterval(iv);
+        }, 30);
+    }
+
+    function showToast(m, c) {
+        els.toast.textContent = m; els.toast.style.background = c; els.toast.style.display = 'block';
+        setTimeout(() => els.toast.style.display = 'none', 2000);
+    }
+
+    function resetLab() { setupLab(); els.selElectrolyte.value = 'none'; }
+    window.onload = init;
+</script>
+</body>
+</html>
